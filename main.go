@@ -62,6 +62,7 @@ func OperationUserHandler(w http.ResponseWriter, r *http.Request) {
 			customerResponse = err
 		}
 		if customerResponse != nil {
+			w.WriteHeader(http.StatusBadRequest) //пока одна ошибка
 			errorText := map[string]string{"error": customerResponse.Error()}
 			err := json.NewEncoder(w).Encode(errorText)
 			if err != nil {
