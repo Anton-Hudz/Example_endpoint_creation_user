@@ -61,76 +61,63 @@ func main() {
 }
 
 func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	// switch r.Method {
-	// case http.MethodPost:
-	var customerResponse error
-	// if r.Method == http.MethodPost {
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// }
-
-	// make function helper for printing error in log and sending to user
-	if err := validationPassword(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationEmail(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationFirstName(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationLastName(&u); err != nil {
-		customerResponse = err
-	}
-
-	if customerResponse != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		errorText := map[string]string{"error": customerResponse.Error()}
-		err := json.NewEncoder(w).Encode(errorText)
+	switch r.Method {
+	case http.MethodPost:
+		err := json.NewDecoder(r.Body).Decode(&u)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+			log.Println(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		log.Println(customerResponse.Error())
 
-		return
-	}
-
-	u.ID = uuid.New().String()
-	u.CreatedAT = time.Now().Format("2006-1-2 15:4:5")
-
-	if err := creationUserDB(&u); err != nil {
-		customerResponse = err
-	}
-
-	if customerResponse != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		errorText := map[string]string{"error": customerResponse.Error()}
-		err := json.NewEncoder(w).Encode(errorText)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+		if err := validationPassword(&u); err != nil {
+			errorsOutput(w, http.StatusNotAcceptable, err)
 			return
 		}
-		log.Println(customerResponse.Error())
 
-		return
+		if err := validationEmail(&u); err != nil {
+			errorsOutput(w, http.StatusNotAcceptable, err)
+			return
+		}
+
+		if err := validationFirstName(&u); err != nil {
+			errorsOutput(w, http.StatusNotAcceptable, err)
+			return
+		}
+
+		if err := validationLastName(&u); err != nil {
+			errorsOutput(w, http.StatusNotAcceptable, err)
+			return
+		}
+
+		u.ID = uuid.New().String()
+		u.CreatedAT = time.Now().Format("2006-1-2 15:4:5")
+
+		if err := creationUserDB(&u); err != nil {
+			errorsOutput(w, http.StatusNotAcceptable, err)
+			return
+		}
+
+		successfullSignUpText := map[string]string{"you have successfully created a user with login": u.Email}
+		err = json.NewEncoder(w).Encode(successfullSignUpText)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Println("Successfuly created user")
 	}
+}
 
-	successfullSignUpText := map[string]string{"you have successfully created a user with login": u.Email}
-	err = json.NewEncoder(w).Encode(successfullSignUpText)
+func errorsOutput(w http.ResponseWriter, statusCode int, customerResponse error) {
+	w.WriteHeader(statusCode)
+	errorText := map[string]string{"error": customerResponse.Error()}
+	err := json.NewEncoder(w).Encode(errorText)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	fmt.Println("Successfuly created user")
+	log.Println(customerResponse.Error())
 }
 
 func creationUserDB(u *User) error {
