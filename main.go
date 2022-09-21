@@ -1,89 +1,164 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 	"unicode"
+
+	_ "github.com/lib/pq"
+
+	"github.com/google/uuid"
 )
 
 type User struct {
-	Id              string `json:"id"`
+	ID              string `json:"id"`
 	Email           string `json:"email"`
-	FullName        string `json:"fullName"`
+	FirstName       string `json:"firstName"`
+	LastName        string `json:"lastName"`
 	Password        string `json:"password"`
 	ConfirmPassword string `json:"confirmPassword"`
+	CreatedAT       string `json:"createAT"`
 }
 
-var Users = []User{}
 var u User
 
 var (
-	problemConfirmPasswordErr = errors.New("problem with confirming password")
-	problemLenPasswordErr     = errors.New("problem with length of password")
-	problemSymbPasswordErr    = errors.New("problem with correct password symbols")
-	problemSymbEmailErr       = errors.New("problem with correct email symbols")
-	problemLenEmailErr        = errors.New("problem with length of email")
-	problemSymbFullNameErr    = errors.New("problem with correct full name symbols")
-	problemLenFullNameErr     = errors.New("problem with length of full name")
+	errProblemConfirmPassword = errors.New("problem with confirming password")
+	errProblemLenPassword     = errors.New("problem with length of password")
+	errProblemSymbPassword    = errors.New("problem with correct password symbols")
+	errProblemSymbEmail       = errors.New("problem with correct email symbols")
+	errProblemLenEmail        = errors.New("problem with length of email")
+	errProblemSymbFirstName   = errors.New("problem with correct first name symbols")
+	errProblemLenFirstName    = errors.New("problem with length of first name")
+	errProblemSymbLastName    = errors.New("problem with correct last name symbols")
+	errProblemLenLastName     = errors.New("problem with length of last name")
+	errProblemOpenDB          = errors.New("problem with opening data base")
+	errProblemUniqueEmail     = errors.New("problem with unique email adress")
+)
+
+const (
+	host          = "localhost"
+	port          = 5432
+	user          = "postgres"
+	password      = "123456"
+	dbname        = "users"
+	webServerPort = ":8080"
 )
 
 func main() {
-	http.HandleFunc("/users", OperationUserHandler)
-	port := ":8080"
-	fmt.Println("Server listen on port:", port)
-	if err := http.ListenAndServe(port, nil); err != nil {
+
+	http.HandleFunc("/users", CreateUserHandler)
+	fmt.Println("Server listen on port:", webServerPort)
+	if err := http.ListenAndServe(webServerPort, nil); err != nil {
 		log.Fatal("ListenAndServe", err)
 	}
 }
 
-func OperationUserHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		var customerResponse error
-
-		err := json.NewDecoder(r.Body).Decode(&u)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if err := validationPassword(&u); err != nil {
-			customerResponse = err
-		}
-		if err := validationEmail(&u); err != nil {
-			customerResponse = err
-		}
-		if err := validationFullName(&u); err != nil {
-			customerResponse = err
-		}
-		if customerResponse != nil {
-			errorText := map[string]string{"error": customerResponse.Error()}
-			err := json.NewEncoder(w).Encode(errorText)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			return
-		}
-
-		u.Id = uuid.New().String()
-
-		successfullSignUpText := map[string]string{"you have successfully created a user with login": u.Email}
-		err = json.NewEncoder(w).Encode(successfullSignUpText)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		fmt.Println("Successfuly created user")
-
-	case http.MethodGet:
-	case http.MethodPut:
+func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+	// switch r.Method {
+	// case http.MethodPost:
+	var customerResponse error
+	// if r.Method == http.MethodPost {
+	err := json.NewDecoder(r.Body).Decode(&u)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+	// }
+
+	// make function helper for printing error in log and sending to user
+	if err := validationPassword(&u); err != nil {
+		customerResponse = err
+	}
+
+	if err := validationEmail(&u); err != nil {
+		customerResponse = err
+	}
+
+	if err := validationFirstName(&u); err != nil {
+		customerResponse = err
+	}
+
+	if err := validationLastName(&u); err != nil {
+		customerResponse = err
+	}
+
+	if customerResponse != nil {
+		w.WriteHeader(http.StatusNotAcceptable)
+		errorText := map[string]string{"error": customerResponse.Error()}
+		err := json.NewEncoder(w).Encode(errorText)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+			return
+		}
+		log.Println(customerResponse.Error())
+
+		return
+	}
+
+	u.ID = uuid.New().String()
+	u.CreatedAT = time.Now().Format("2006-1-2 15:4:5")
+
+	if err := creationUserDB(&u); err != nil {
+		customerResponse = err
+	}
+
+	if customerResponse != nil {
+		w.WriteHeader(http.StatusNotAcceptable)
+		errorText := map[string]string{"error": customerResponse.Error()}
+		err := json.NewEncoder(w).Encode(errorText)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+			return
+		}
+		log.Println(customerResponse.Error())
+
+		return
+	}
+
+	successfullSignUpText := map[string]string{"you have successfully created a user with login": u.Email}
+	err = json.NewEncoder(w).Encode(successfullSignUpText)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Successfuly created user")
+}
+
+func creationUserDB(u *User) error {
+	db, err := connectionDB()
+	if err != nil {
+		return err
+	}
+
+	defer db.Close()
+
+	insertDynStmt := `insert into "users"("id", "email", "firstname", "lastname", "password", "createdat") values($1,$2,$3,$4,$5,$6);`
+	_, err = db.Exec(insertDynStmt, u.ID, u.Email, u.FirstName, u.LastName, u.Password, u.CreatedAT)
+	if err != nil {
+		return errProblemUniqueEmail
+	}
+
+	return nil
+}
+
+func connectionDB() (*sql.DB, error) {
+	psqlconn := fmt.Sprintf("host = %s port = %d user = %s password = %s dbname = %s sslmode = disable", host, port, user, password, dbname)
+
+	db, err := sql.Open("postgres", psqlconn)
+	if err != nil {
+		return nil, errProblemOpenDB
+	}
+
+	return db, err
 }
 
 func validationPassword(u *User) error {
@@ -91,24 +166,19 @@ func validationPassword(u *User) error {
 		minPasswordLen = 8
 		maxPasswordLen = 256
 	)
-	var correctPasswordSymb = true
 
 	for i := 0; i < len(u.Password); i++ {
 		if u.Password[i] > unicode.MaxASCII {
-			correctPasswordSymb = false
+			return errProblemSymbPassword
 		}
 	}
 
-	if correctPasswordSymb == false {
-		return problemSymbPasswordErr
-	}
-
 	if u.Password != u.ConfirmPassword {
-		return problemConfirmPasswordErr
+		return errProblemConfirmPassword
 	}
 
 	if len(u.Password) < minPasswordLen || len(u.Password) > maxPasswordLen {
-		return problemLenPasswordErr
+		return errProblemLenPassword
 	}
 
 	return nil
@@ -119,65 +189,52 @@ func validationEmail(u *User) error {
 		minEmailLen = 4
 		maxEmailLen = 256
 	)
-	var correctEmailSymb = true
 
 	if len(u.Email) < minEmailLen || len(u.Email) > maxEmailLen {
-		return problemLenEmailErr
+		return errProblemLenEmail
 	}
 
 	for i := 0; i < len(u.Email); i++ {
 		if u.Email[i] > unicode.MaxASCII {
-			correctEmailSymb = false
+			return errProblemSymbEmail
 		}
 	}
 
 	if !strings.Contains(u.Email, "@") {
-		correctEmailSymb = false
-	}
-
-	if correctEmailSymb == false {
-		return problemSymbEmailErr
+		return errProblemSymbEmail
 	}
 
 	return nil
 }
-func validationFullName(u *User) error {
-	const minFullNamelLen = 1
-	var correctFullNameSymb = true
 
-	for i := 0; i < len(u.FullName); i++ {
-		if u.FullName[i] > unicode.MaxASCII {
-			correctFullNameSymb = false
+func validationFirstName(u *User) error {
+	const minFirstNameLen = 1
+
+	for i := 0; i < len(u.FirstName); i++ {
+		if u.FirstName[i] > unicode.MaxASCII {
+			return errProblemSymbFirstName
 		}
 	}
-	if correctFullNameSymb == false {
-		return problemSymbFullNameErr
-	}
 
-	if len(u.FullName) < minFullNamelLen {
-		return problemLenFullNameErr
+	if len(u.FirstName) < minFirstNameLen {
+		return errProblemLenFirstName
 	}
 
 	return nil
 }
 
-//----------------------------------------------------------------------------------
+func validationLastName(u *User) error {
+	const minLastNameLen = 1
 
-// As a user, I want to register in the system. To register I provide an email (login), fullname and password.
+	for i := 0; i < len(u.LastName); i++ {
+		if u.LastName[i] > unicode.MaxASCII {
+			return errProblemSymbLastName
+		}
+	}
 
-// Requirements for password validation:
-// - min 8
-// - max 256
-// - ASCI symbols
+	if len(u.LastName) < minLastNameLen {
+		return errProblemLenLastName
+	}
 
-// Requirements for login(email) validation:
-// - max 256 symbols
-// - must be @
-// - TODO: search typical email requirements
-// - must be unique
-
-// Requirements for Fullname:
-// - min 2/3 symbols
-
-// User must have ID (UUID)
-// CreatedAt column must be in the database (and maybe UpdatedAt)
+	return nil
+}
