@@ -96,32 +96,6 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (u *User) validate() error {
-	if err := validatePassword(u); err != nil {
-		return err
-	}
-	if err := validateEmail(u); err != nil {
-		return err
-	}
-
-	if err := validateFirstName(u); err != nil {
-		return err
-	}
-
-	if err := validateLastName(u); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func respondWithError(w http.ResponseWriter, statusCode int, customerResponse error) {
-	w.WriteHeader(statusCode)
-	errorText := ([]byte(fmt.Sprintf(`{"error":"%v"}`, customerResponse.Error())))
-	w.Write(errorText)
-	log.Println(customerResponse.Error())
-}
-
 func createUserDB(u *User) error {
 	db, err := connectDB()
 	if err != nil {
@@ -148,6 +122,32 @@ func connectDB() (*sql.DB, error) {
 	}
 
 	return db, err
+}
+
+func respondWithError(w http.ResponseWriter, statusCode int, customerResponse error) {
+	w.WriteHeader(statusCode)
+	errorText := ([]byte(fmt.Sprintf(`{"error":"%v"}`, customerResponse.Error())))
+	w.Write(errorText)
+	log.Println(customerResponse.Error())
+}
+
+func (u *User) validate() error {
+	if err := validatePassword(u); err != nil {
+		return err
+	}
+	if err := validateEmail(u); err != nil {
+		return err
+	}
+
+	if err := validateFirstName(u); err != nil {
+		return err
+	}
+
+	if err := validateLastName(u); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func validatePassword(u *User) error {
