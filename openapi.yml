@@ -4,14 +4,14 @@ info:
   description: This is Super-Super-Heroes' code platform
   version: 0.0.1
 servers:
-  - url: http://localhost:8080/
+  - url: http://localhost:8080/users
 paths:
   /users:
     post:
       tags:
          - users
       summary: Creates new user
-      description: This endpoint for create and add a new user to Octagon. Request consists of user id, user first name, user last name, user password and created AT. Response may be consist of status code and response message
+      description: This endpoint for create a new user to Octagon. Request consists of user id, user first name, user last name, user password and created AT. Response may be consist of status code and response message
       requestBody:
         required: true
         description: Created user object
@@ -21,7 +21,7 @@ paths:
                $ref: '#/components/schemas/User'
       responses:
         '201':
-          description: Successful created and added user
+          description: Successful created user
           content:
             application/json:
               schema:
@@ -49,17 +49,11 @@ components:
     User:
       type: object
       required:
-        - id
+        - email
         - firstname
         - lastname
-        - email
         - password
-        - createdap
       properties:
-        id:
-          type: string
-          format: uuid
-          example: 	fdd807b4-f6a3-46d6-a583-1aaf09f6f09a
         email:
           description: must be @ and must be unique
           type: string
@@ -80,10 +74,6 @@ components:
           minLength: 8
           maxLength: 256
           example: '123456Aa'
-        createdat:
-          type: string
-          format: 2022-9-22 23:31:7
-          example: 2022-9-22 23:31:7
     409:
       type: object
       required:
