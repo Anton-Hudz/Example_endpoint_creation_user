@@ -26,8 +26,6 @@ type User struct {
 	CreatedAT       string `json:"createAT"`
 }
 
-var u User
-
 var (
 	errProblemConfirmPassword = errors.New("problem with confirming password")
 	errProblemLenPassword     = errors.New("problem with length of password")
@@ -61,80 +59,45 @@ func main() {
 }
 
 func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	// switch r.Method {
-	// case http.MethodPost:
-	var customerResponse error
-	// if r.Method == http.MethodPost {
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// }
+	switch r.Method {
+	case http.MethodPost:
+		const dateTmplate = "2006-1-2 15:4:5"
+		var u User
 
-	// make function helper for printing error in log and sending to user
-	if err := validationPassword(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationEmail(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationFirstName(&u); err != nil {
-		customerResponse = err
-	}
-
-	if err := validationLastName(&u); err != nil {
-		customerResponse = err
-	}
-
-	if customerResponse != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		errorText := map[string]string{"error": customerResponse.Error()}
-		err := json.NewEncoder(w).Encode(errorText)
+		err := json.NewDecoder(r.Body).Decode(&u)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+			log.Println("Failed to unmarshal request")
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		log.Println(customerResponse.Error())
 
-		return
-	}
-
-	u.ID = uuid.New().String()
-	u.CreatedAT = time.Now().Format("2006-1-2 15:4:5")
-
-	if err := creationUserDB(&u); err != nil {
-		customerResponse = err
-	}
-
-	if customerResponse != nil {
-		w.WriteHeader(http.StatusNotAcceptable)
-		errorText := map[string]string{"error": customerResponse.Error()}
-		err := json.NewEncoder(w).Encode(errorText)
+		err = u.validate()
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest) //тут можно прописать универсальную перем со статускодом, котор будет передаваться из валидации
+			respondWithError(w, http.StatusNotAcceptable, err)
+
 			return
 		}
-		log.Println(customerResponse.Error())
 
-		return
+		u.ID = uuid.New().String()
+		u.CreatedAT = time.Now().Format(dateTmplate)
+
+		if err := createUserDB(&u); err != nil {
+			respondWithError(w, http.StatusNotAcceptable, err)
+			return
+		}
+
+		successfullSignUpText := ([]byte(fmt.Sprintf(`{"you have successfully created a user with login":"%v"}`, u.Email)))
+		w.Write(successfullSignUpText)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	}
-
-	successfullSignUpText := map[string]string{"you have successfully created a user with login": u.Email}
-	err = json.NewEncoder(w).Encode(successfullSignUpText)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	fmt.Println("Successfuly created user")
 }
 
-func creationUserDB(u *User) error {
-	db, err := connectionDB()
+func createUserDB(u *User) error {
+	db, err := connectDB()
 	if err != nil {
 		return err
 	}
@@ -150,7 +113,7 @@ func creationUserDB(u *User) error {
 	return nil
 }
 
-func connectionDB() (*sql.DB, error) {
+func connectDB() (*sql.DB, error) {
 	psqlconn := fmt.Sprintf("host = %s port = %d user = %s password = %s dbname = %s sslmode = disable", host, port, user, password, dbname)
 
 	db, err := sql.Open("postgres", psqlconn)
@@ -161,7 +124,33 @@ func connectionDB() (*sql.DB, error) {
 	return db, err
 }
 
-func validationPassword(u *User) error {
+func respondWithError(w http.ResponseWriter, statusCode int, customerResponse error) {
+	w.WriteHeader(statusCode)
+	errorText := ([]byte(fmt.Sprintf(`{"error":"%v"}`, customerResponse.Error())))
+	w.Write(errorText)
+	log.Println(customerResponse.Error())
+}
+
+func (u *User) validate() error {
+	if err := validatePassword(u); err != nil {
+		return err
+	}
+	if err := validateEmail(u); err != nil {
+		return err
+	}
+
+	if err := validateFirstName(u); err != nil {
+		return err
+	}
+
+	if err := validateLastName(u); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validatePassword(u *User) error {
 	const (
 		minPasswordLen = 8
 		maxPasswordLen = 256
@@ -184,7 +173,7 @@ func validationPassword(u *User) error {
 	return nil
 }
 
-func validationEmail(u *User) error {
+func validateEmail(u *User) error {
 	const (
 		minEmailLen = 4
 		maxEmailLen = 256
@@ -207,7 +196,7 @@ func validationEmail(u *User) error {
 	return nil
 }
 
-func validationFirstName(u *User) error {
+func validateFirstName(u *User) error {
 	const minFirstNameLen = 1
 
 	for i := 0; i < len(u.FirstName); i++ {
@@ -223,7 +212,7 @@ func validationFirstName(u *User) error {
 	return nil
 }
 
-func validationLastName(u *User) error {
+func validateLastName(u *User) error {
 	const minLastNameLen = 1
 
 	for i := 0; i < len(u.LastName); i++ {
